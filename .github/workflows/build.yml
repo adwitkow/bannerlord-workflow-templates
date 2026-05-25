@@ -1,12 +1,7 @@
 name: Build
 
 on:
-  push:
-    branches:
-      - master
-      - 'release/**'
-  pull_request:
-    types: [opened, synchronize, reopened]
+  workflow_call:
 
 env:
   # Disable the .NET logo in the console output.
