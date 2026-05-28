@@ -30,7 +30,7 @@ jobs:
       with:
         dotnet-version: 6.0.x
 
-    - name: Update verison in common.props
+    - name: Update version in common.props
       shell: pwsh
       run: |
         $branch = $env:GITHUB_REF.replace('refs/heads/', '')
@@ -50,35 +50,60 @@ jobs:
     - name: Build Module
       shell: pwsh
       run: |
-        $impl = $PWD.Path + "/bannerlord-implementations";
-        $path = $PWD.Path + "/bannerlord";
-        $final = $path + "/Modules/$env:REPO_NAME/bin/Win64_Shipping_Client/";
-        $proj = "$env:REPO_NAME/$env:REPO_NAME.csproj";
-        $pdll = $path + "/Modules/$env:REPO_NAME/bin/Win64_Shipping_Client/$env:REPO_NAME*.dll";
-        $ppdb = $path + "/Modules/$env:REPO_NAME/bin/Win64_Shipping_Client/$env:REPO_NAME*.pdb";
+        $root = $PWD.Path
+        $impl = Join-Path $root "bannerlord-implementations"
+        $path = Join-Path $root "bannerlord"
+    
+        # Find the first .csproj dynamically instead of depending on REPO_NAME
+        $csproj = Get-ChildItem -Path $root -Recurse -Filter *.csproj |
+          Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' } |
+          Select-Object -First 1
+    
+        if (-not $csproj) {
+          throw "No .csproj file found"
+        }
+    
+        $moduleName = $csproj.BaseName
+        $proj = $csproj.FullName
+    
+        $buildOutput = Join-Path $path "Modules/$moduleName/bin/Win64_Shipping_Client"
+        $final = $buildOutput
+    
         # The folders are required to be created before executing the script
-        New-Item -ItemType directory -Force -Path $impl;
-        New-Item -ItemType directory -Force -Path $path;
-        [string[]]$gameversions = Get-Content -Path supported-game-versions.txt;
+        New-Item -ItemType Directory -Force -Path $impl | Out-Null
+        New-Item -ItemType Directory -Force -Path $path | Out-Null
+        New-Item -ItemType Directory -Force -Path $final | Out-Null
+    
+        [string[]]$gameversions = Get-Content -Path "supported-game-versions.txt"
+    
         # Process all implementations
-        For ($i = 0; $i -le $gameversions.Length - 1; $i++)
+        foreach ($gameversion in $gameversions)
         {
-            $gameversion = $gameversions[$i];
-            $version = $gameversion.substring(1);
-            $constgameversion = $gameversion.replace(".", "");
+            $constgameversion = $gameversion.Replace(".", "")
+    
             echo "::group::Build for $gameversion"
             echo "Start building for gameversion = $gameversion"
-            dotnet clean $proj --configuration Release;
-            dotnet build $proj --configuration Release -p:OverrideGameVersion=$gameversion -p:GameFolder="$path" -p:ConstGameVersionWithPrefix="$constgameversion";
-            # Copy Implementations to the Implementations folder
-            Copy-Item $pdll $impl/;
-            Copy-Item $ppdb $impl/;
+    
+            dotnet clean $proj --configuration Release
+    
+            dotnet build $proj `
+              --configuration Release `
+              -p:OverrideGameVersion=$gameversion `
+              -p:GameFolder="$path" `
+              -p:ConstGameVersionWithPrefix="$constgameversion"
+    
+            # Copy build artifacts dynamically
+            Get-ChildItem -Path $buildOutput -Filter "*.dll" | Copy-Item -Destination $impl -Force
+            Get-ChildItem -Path $buildOutput -Filter "*.pdb" | Copy-Item -Destination $impl -Force
+    
             echo "::endgroup::"
         }
-        # Copy Implementations to the Module
-        Copy-Item $impl/* $final;
-        # Delete Implementations folder
-        Remove-Item -Recurse $impl;
+    
+        # Copy implementations to the module
+        Copy-Item "$impl/*" $final -Force
+    
+        # Delete implementations folder
+        Remove-Item -Recurse -Force $impl
         
     - name: Upload build
       uses: actions/upload-artifact@v7
