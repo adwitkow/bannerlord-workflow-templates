@@ -91,7 +91,7 @@ jobs:
               --configuration Release `
               -p:OverrideGameVersion=$gameversion `
               -p:GameFolder="$path" `
-              -p:ConstGameVersionWithPrefix="$constgameversion"
+              -p:ConstGameVersionWithPrefix="$constgameversion" `
               -p:Version="${{ steps.version.outputs.version }}"
     
             # Copy build artifacts dynamically
