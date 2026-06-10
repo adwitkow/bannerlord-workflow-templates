@@ -29,23 +29,24 @@ jobs:
       uses: actions/setup-dotnet@master
       with:
         dotnet-version: 6.0.x
-
-    - name: Update version in common.props
+    
+    - name: Determine version
+      id: version
       shell: pwsh
       run: |
-        $branch = $env:GITHUB_REF.replace('refs/heads/', '')
-        if ($branch -match 'release\/(\d\.?){3,4}') {
+        $branch = $env:GITHUB_REF.Replace('refs/heads/', '')
+    
+        if ($branch -match '^release\/(\d+\.){3}\d+$') {
           $version = $branch.Split('/')[-1]
-          $path = 'build/common.props'
-          $xml = New-Object XML
-          $xml.Load($path)
-          $versionElement =  $xml.SelectSingleNode("//Version")
-          $versionElement.InnerText = $version
-          $xml.Save($path)
-          Write-Output "Modified common.props to build with version ${version}"
+          Write-Output "Release branch detected."
         } else {
-          Write-Output 'No need to modify common.props version - this is not a release'
+          $version = '0.0.0.0'
+          Write-Output "Not a release branch."
         }
+
+        Write-Output "Using version: $version"
+    
+        "version=$version" >> $env:GITHUB_OUTPUT
         
     - name: Build Module
       shell: pwsh
@@ -91,6 +92,7 @@ jobs:
               -p:OverrideGameVersion=$gameversion `
               -p:GameFolder="$path" `
               -p:ConstGameVersionWithPrefix="$constgameversion"
+              -p:Version="${{ steps.version.outputs.version }}"
     
             # Copy build artifacts dynamically
             Get-ChildItem -Path $buildOutput -Filter "*.dll" | Copy-Item -Destination $impl -Force
