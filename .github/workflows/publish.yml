@@ -41,7 +41,7 @@ jobs:
           
       - name: Generate release notes
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0)
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
 
           echo "## Changes" > RELEASE_NOTES.md
           echo "" >> RELEASE_NOTES.md
