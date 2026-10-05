@@ -9,22 +9,37 @@ on:
         required: false
         default: ""
       nexus_mod_id:
-        description: "Nexus Mods mod ID. Optional; if set (with nexus_file_id), commit list is sent as the Nexus changelog"
+        description: "Nexus Mods mod ID. Required for the changelog to be sent"
         type: string
         required: false
         default: ""
       nexus_category:
-        description: "Nexus file category"
+        description: "Category for the uploaded file version"
         type: string
         required: false
         default: "main"
       nexus_archive_existing_version:
-        description: "Archive the previous version on Nexus when uploading the new one"
+        description: "Archive the existing version when uploading a new version"
+        type: boolean
+        required: false
+        default: false
+      nexus_primary_mod_manager_download:
+        description: "Whether this file is the default download for mod managers"
+        type: boolean
+        required: false
+        default: false
+      nexus_allow_mod_manager_download:
+        description: "Whether mod manager downloads are enabled for this file"
+        type: boolean
+        required: false
+        default: true
+      nexus_show_requirements_pop_up:
+        description: "Whether to show a requirements popup when downloading this file"
         type: boolean
         required: false
         default: false
       nexus_update_mod_version:
-        description: "Update the mod page's version number to match this upload"
+        description: "Whether to update the mod's version to match this file's version"
         type: boolean
         required: false
         default: false
@@ -103,7 +118,7 @@ jobs:
         env:
           NEXUS_MOD_ID: ${{ inputs.nexus_mod_id }}
         run: |
-          # --- Description: supported game versions collapsed to major.minor.x ---
+          # Description: supported game versions collapsed to major.minor.x
           DESCRIPTION=""
           if [ -f supported-game-versions.txt ]; then
             RANGES=$(tr -d '\r' < supported-game-versions.txt | awk '
@@ -126,7 +141,7 @@ jobs:
           fi
           echo "description=$DESCRIPTION" >> "$GITHUB_OUTPUT"
 
-          # --- Changelog: release notes without the heading and leading hyphens ---
+          # Changelog: release notes without the heading and leading hyphens
           if [ -n "$NEXUS_MOD_ID" ]; then
             {
               echo 'changelog<<NEXUS_CHANGELOG_EOF'
@@ -148,6 +163,9 @@ jobs:
           description: ${{ steps.nexus_meta.outputs.description }}
           category: ${{ inputs.nexus_category }}
           archive_existing_version: ${{ inputs.nexus_archive_existing_version }}
+          primary_mod_manager_download: ${{ inputs.nexus_primary_mod_manager_download }}
+          allow_mod_manager_download: ${{ inputs.nexus_allow_mod_manager_download }}
+          show_requirements_pop_up: ${{ inputs.nexus_show_requirements_pop_up }}
           update_mod_version: ${{ inputs.nexus_update_mod_version }}
           mod_id: ${{ inputs.nexus_mod_id }}
           changelog: ${{ steps.nexus_meta.outputs.changelog }}
