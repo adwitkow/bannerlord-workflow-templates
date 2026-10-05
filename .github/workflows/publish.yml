@@ -2,6 +2,36 @@ name: Publish
 
 on:
   workflow_call:
+    inputs:
+      nexus_file_id:
+        description: "Nexus Mods file ID to add the new version to. Leave empty to skip the Nexus upload"
+        type: string
+        required: false
+        default: ""
+      nexus_mod_id:
+        description: "Nexus Mods mod ID. Optional; if set (with nexus_file_id), release notes are sent as the Nexus changelog"
+        type: string
+        required: false
+        default: ""
+      nexus_category:
+        description: "Nexus file category"
+        type: string
+        required: false
+        default: "main"
+      nexus_archive_existing_version:
+        description: "Archive the previous version on Nexus when uploading the new one"
+        type: boolean
+        required: false
+        default: false
+      nexus_update_mod_version:
+        description: "Update the mod page's version number to match this upload"
+        type: boolean
+        required: false
+        default: false
+    secrets:
+      NEXUSMODS_API_KEY:
+        description: "Nexus Mods API key. Required only when nexus_file_id is set"
+        required: false
 
 jobs:
   publish:
@@ -12,20 +42,34 @@ jobs:
       contents: write
       actions: read
 
+    env:
+      NEXUS_ENABLED: ${{ inputs.nexus_file_id != '' }}
+
     steps:
+      - name: Validate Nexus configuration
+        if: ${{ env.NEXUS_ENABLED == 'true' }}
+        env:
+          NEXUSMODS_API_KEY: ${{ secrets.NEXUSMODS_API_KEY }}
+        run: |
+          if [ -z "$NEXUSMODS_API_KEY" ]; then
+            echo "::error::nexus_file_id is set but the NEXUSMODS_API_KEY secret was not provided to this workflow."
+            exit 1
+          fi
+
       - name: Checkout triggering commit
         uses: actions/checkout@v6
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
-          
+
       - name: Determine version
         id: version
         run: |
           VERSION="${{ github.event.workflow_run.head_branch }}"
           VERSION=v${VERSION#release/}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          
+          echo "number=${VERSION#v}" >> $GITHUB_OUTPUT
+
       - name: Download build artifact
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -38,7 +82,7 @@ jobs:
         run: |
           cd artifact
           zip -r "${{ github.event.repository.name }}.${{ steps.version.outputs.version }}.zip" .
-          
+
       - name: Generate release notes
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
@@ -52,6 +96,32 @@ jobs:
             git log ${PREV_TAG}..HEAD \
               --no-merges --oneline --no-decorate --pretty=format:"- %s - %an (%h)" >> RELEASE_NOTES.md
           fi
+
+      - name: Prepare Nexus changelog
+        id: notes
+        if: ${{ env.NEXUS_ENABLED == 'true' && inputs.nexus_mod_id != '' }}
+        run: |
+          {
+            echo 'changelog<<RELEASE_NOTES_EOF'
+            cat RELEASE_NOTES.md
+            echo
+            echo 'RELEASE_NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload to Nexus Mods
+        if: ${{ env.NEXUS_ENABLED == 'true' }}
+        uses: Nexus-Mods/upload-action@v1.0.0-beta.9
+        with:
+          api_key: ${{ secrets.NEXUSMODS_API_KEY }}
+          file_id: ${{ inputs.nexus_file_id }}
+          filename: artifact/${{ github.event.repository.name }}.${{ steps.version.outputs.version }}.zip
+          display_name: ${{ github.event.repository.name }}.${{ steps.version.outputs.version }}.zip
+          version: ${{ steps.version.outputs.number }}
+          category: ${{ inputs.nexus_category }}
+          archive_existing_version: ${{ inputs.nexus_archive_existing_version }}
+          update_mod_version: ${{ inputs.nexus_update_mod_version }}
+          mod_id: ${{ inputs.nexus_mod_id }}
+          changelog: ${{ steps.notes.outputs.changelog }}
 
       - name: Create GitHub release
         env:
