@@ -118,8 +118,11 @@ jobs:
         env:
           NEXUS_MOD_ID: ${{ inputs.nexus_mod_id }}
         run: |
-          # Description: supported game versions collapsed to major.minor.x
-          DESCRIPTION=""
+          # Release notes without the heading and leading hyphens
+          NOTES=$(tail -n +3 RELEASE_NOTES.md | sed 's/^- //')
+
+          # Supported game versions collapsed to major.minor.x
+          VERSIONS_LINE=""
           if [ -f supported-game-versions.txt ]; then
             RANGES=$(tr -d '\r' < supported-game-versions.txt | awk '
               NF {
@@ -134,19 +137,29 @@ jobs:
               }
               END { print out }')
             if [ -n "$RANGES" ]; then
-              DESCRIPTION="Supported game versions: $RANGES"
+              VERSIONS_LINE="Supported game versions: $RANGES"
             fi
           else
-            echo "::warning::supported-game-versions.txt not found; Nexus description will be empty."
+            echo "::warning::supported-game-versions.txt not found; description will contain release notes only."
           fi
-          echo "description=$DESCRIPTION" >> "$GITHUB_OUTPUT"
 
-          # Changelog: release notes without the heading and leading hyphens
+          # Description = versions line + blank line + release notes
+          DESCRIPTION="$VERSIONS_LINE"
+          if [ -n "$NOTES" ]; then
+            DESCRIPTION="${DESCRIPTION:+$DESCRIPTION$'\n\n'}$NOTES"
+          fi
+
+          {
+            echo 'description<<NEXUS_DESCRIPTION_EOF'
+            printf '%s\n' "$DESCRIPTION"
+            echo 'NEXUS_DESCRIPTION_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+          # Changelog (only sent when mod_id is set)
           if [ -n "$NEXUS_MOD_ID" ]; then
             {
               echo 'changelog<<NEXUS_CHANGELOG_EOF'
-              tail -n +3 RELEASE_NOTES.md | sed 's/^- //'
-              echo
+              printf '%s\n' "$NOTES"
               echo 'NEXUS_CHANGELOG_EOF'
             } >> "$GITHUB_OUTPUT"
           fi
