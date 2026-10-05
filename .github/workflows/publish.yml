@@ -9,7 +9,7 @@ on:
         required: false
         default: ""
       nexus_mod_id:
-        description: "Nexus Mods mod ID. Optional; if set (with nexus_file_id), release notes are sent as the Nexus changelog"
+        description: "Nexus Mods mod ID. Optional; if set (with nexus_file_id), commit list is sent as the Nexus changelog"
         type: string
         required: false
         default: ""
@@ -97,16 +97,44 @@ jobs:
               --no-merges --oneline --no-decorate --pretty=format:"- %s - %an (%h)" >> RELEASE_NOTES.md
           fi
 
-      - name: Prepare Nexus changelog
-        id: notes
-        if: ${{ env.NEXUS_ENABLED == 'true' && inputs.nexus_mod_id != '' }}
+      - name: Prepare Nexus description and changelog
+        id: nexus_meta
+        if: ${{ env.NEXUS_ENABLED == 'true' }}
+        env:
+          NEXUS_MOD_ID: ${{ inputs.nexus_mod_id }}
         run: |
-          {
-            echo 'changelog<<RELEASE_NOTES_EOF'
-            cat RELEASE_NOTES.md
-            echo
-            echo 'RELEASE_NOTES_EOF'
-          } >> "$GITHUB_OUTPUT"
+          # --- Description: supported game versions collapsed to major.minor.x ---
+          DESCRIPTION=""
+          if [ -f supported-game-versions.txt ]; then
+            RANGES=$(tr -d '\r' < supported-game-versions.txt | awk '
+              NF {
+                v = $1
+                sub(/^[vV]/, "", v)
+                n = split(v, p, ".")
+                s = (n >= 2) ? p[1] "." p[2] ".x" : v
+                if (!(s in seen)) {
+                  seen[s] = 1
+                  out = out (out == "" ? "" : ", ") s
+                }
+              }
+              END { print out }')
+            if [ -n "$RANGES" ]; then
+              DESCRIPTION="Supported game versions: $RANGES"
+            fi
+          else
+            echo "::warning::supported-game-versions.txt not found; Nexus description will be empty."
+          fi
+          echo "description=$DESCRIPTION" >> "$GITHUB_OUTPUT"
+
+          # --- Changelog: release notes without the heading and leading hyphens ---
+          if [ -n "$NEXUS_MOD_ID" ]; then
+            {
+              echo 'changelog<<NEXUS_CHANGELOG_EOF'
+              tail -n +3 RELEASE_NOTES.md | sed 's/^- //'
+              echo
+              echo 'NEXUS_CHANGELOG_EOF'
+            } >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Upload to Nexus Mods
         if: ${{ env.NEXUS_ENABLED == 'true' }}
@@ -117,11 +145,12 @@ jobs:
           filename: artifact/${{ github.event.repository.name }}.${{ steps.version.outputs.version }}.zip
           display_name: ${{ github.event.repository.name }}.${{ steps.version.outputs.version }}.zip
           version: ${{ steps.version.outputs.number }}
+          description: ${{ steps.nexus_meta.outputs.description }}
           category: ${{ inputs.nexus_category }}
           archive_existing_version: ${{ inputs.nexus_archive_existing_version }}
           update_mod_version: ${{ inputs.nexus_update_mod_version }}
           mod_id: ${{ inputs.nexus_mod_id }}
-          changelog: ${{ steps.notes.outputs.changelog }}
+          changelog: ${{ steps.nexus_meta.outputs.changelog }}
 
       - name: Create GitHub release
         env:
