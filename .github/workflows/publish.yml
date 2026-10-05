@@ -27,7 +27,7 @@ on:
         description: "Whether this file is the default download for mod managers"
         type: boolean
         required: false
-        default: false
+        default: true
       nexus_allow_mod_manager_download:
         description: "Whether mod manager downloads are enabled for this file"
         type: boolean
@@ -37,12 +37,12 @@ on:
         description: "Whether to show a requirements popup when downloading this file"
         type: boolean
         required: false
-        default: false
+        default: true
       nexus_update_mod_version:
         description: "Whether to update the mod's version to match this file's version"
         type: boolean
         required: false
-        default: false
+        default: true
     secrets:
       NEXUSMODS_API_KEY:
         description: "Nexus Mods API key. Required only when nexus_file_id is set"
